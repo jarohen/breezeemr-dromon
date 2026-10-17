@@ -116,6 +116,12 @@ path stays as a correctness fallback.
 
 ### Option B: Per-row tx-functions
 
+> [!WARNING]
+> **XTDB v2 has no tx-functions**, as of XTDB 2.2.0-beta3.
+> They were removed in 2.0.0-beta7: a `:put-fn` or `:call` op throws `:xtdb/tx-fns-removed` ("Please use ASSERTs and SQL DML statements instead", `tx_ops.clj`).
+>
+> - **`INVOKE` is not XTDB SQL**
+
 xtdb2 supports user-defined tx-functions that run *inside* the
 transactor and have read access to the database state. The version
 bump can move there:
@@ -178,7 +184,25 @@ File a separate spike to evaluate.
 
 Reject **Option C** — too big, too broad, not justified by the gain.
 
+> [!NOTE]
+> **XTDB has no identity or auto-increment column**, as of XTDB 2.2.0-beta3.
+> Option C would need one built first.
+
 ## Open questions for Option A
+
+> [!NOTE]
+> **XTDB answers questions 1-3**, as of XTDB 2.2.0-beta3.
+>
+> 1. **A failed ASSERT throws an anomaly with category `:conflict` and code `:xtdb/assert-failed`**
+>    Its message is "Assert failed" or the ASSERT's own (`OpenTx.kt`); over pgwire it is SQLSTATE `P0004`.
+>    Catch on the category and code, not on `Exception`.
+>
+> 2. **`ASSERT` takes any boolean expression** (`Sql.g4`)
+>    One `ASSERT NOT EXISTS (SELECT 1 FROM t WHERE _id IN (...))` covers many ids.
+>    Several ASSERT ops are several statements in one transaction, not round trips.
+>
+> 3. **A transaction commits whole or not at all**
+>    An aborted one is recorded in `xt.txs` with `committed = false`.
 
 1. **What does xtdb2 throw on ASSERT failure?** Need to identify the
    exception class and `ex-data` shape so the catch is precise. A

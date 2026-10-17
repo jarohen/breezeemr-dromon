@@ -21,6 +21,33 @@ SELECT (period)."start" FROM Encounter
 - The dot notation `"a"."b"` is NOT struct field access in XTDB v2 — it silently returns `{}`.
 - When a resource lacks the struct column entirely, `("field")."subfield"` returns NULL (no error), so WHERE clauses safely skip those rows.
 
+> [!WARNING]
+> **`"period"."start"` is a table-qualified column reference, not struct field access**, as of XTDB 2.2.0-beta3.
+> It fails with *Column not found: period.start* (`Sql.g4` `identifierChain`).
+>
+> - **The `{}` comes from `("period")."start"` on a row whose `period` is NULL**
+>   Null-valued columns are left out of result maps.
+>
+> - **The NULL-when-absent rule above holds only while some row of the table has the column**
+>   See the note on undeclared columns below.
+
+> [!NOTE]
+> **Postgres's JSON operators also reach into struct columns**, as of XTDB 2.2.0-beta3.
+> Field names and indices must be literals.
+>
+> - **`"period"->>'start'` returns the field as text, and `"period"->'start'` keeps its type**
+>
+> - **Steps chain through lists by index**
+>   `d->'arr'->0->>'code'`
+>
+> - **A row without the column yields NULL**
+
+> [!NOTE]
+> **`period` is non-reserved on XTDB `main` after 2.2.0-beta3**, unreleased as of 2026-10-17.
+> It is accepted wherever an identifier can appear (`955072f8f`, #6014), including `(period)."start"`.
+>
+> - **At beta3, which dromon pins, it is still reserved and must be quoted**
+
 ## FHIR Date Search with Period Fields
 
 The `date` search parameter may map to both DateTime and Period fields depending on the resource type (e.g., Encounter has `period`, Observation has `effectivePeriod` or `effectiveDateTime`).
@@ -57,6 +84,10 @@ Different FHIR resources store the patient reference in different fields. The `p
 
 Querying all three fields in a single OR clause fails silently on resources that lack the column (XTDB throws an error caught by the exception handler, returning empty results).
 
+> [!NOTE]
+> **The error is *Column not found*, raised at plan time for any column the table has never had**, as of XTDB 2.2.0-beta3.
+> It happens with or without the OR, and declaring the column on the table removes it.
+
 ## Practitioner Search Param
 
 The `practitioner` search param value may arrive with or without the `Practitioner/` prefix (e.g., `practitioner-1` or `Practitioner/practitioner-1`). Must check `str/starts-with?` before prepending to avoid double-prefixing like `Practitioner/Practitioner/practitioner-1`.
@@ -68,6 +99,13 @@ The `practitioner` search param value may arrive with or without the `Practition
 EXISTS (SELECT 1 FROM UNNEST((description).coding) AS c(val) WHERE (c.val).code = '43396009')
 ```
 This may fail because XTDB v2 stores `description` as a nested struct and `UNNEST` on a struct's array subfield may not work as expected. Needs investigation with a live XTDB v2 instance.
+
+> [!NOTE]
+> **`UNNEST` over a struct's list subfield works**, as of XTDB 2.2.0-beta3.
+> `EXISTS (SELECT 1 FROM UNNEST((d).arr) AS c(val) WHERE (c.val).code = 'x')` returns the row on an in-process beta3 node.
+>
+> - **The more likely failure here is a table that has never had a `description` column**
+>   That fails with *Column not found*.
 
 ## Condition asserted-date Search (UNRESOLVED)
 

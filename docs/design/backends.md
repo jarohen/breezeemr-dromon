@@ -77,6 +77,11 @@ indistinguishable from an attributed one, which is exactly what the split preven
   `--sun-misc-unsafe-memory-access=allow` (JEP 471; rejected before JDK 23) and
   `-Dio.netty.noUnsafe=false`; the bench's `:xtdb` alias passes the first. These args are
   already in `deps.edn`.
+
+  > [!NOTE]
+  > **XTDB's own documented JVM flags don't include `--sun-misc-unsafe-memory-access=allow`**, as of XTDB 2.2.0-beta3.
+  > They are `--add-opens=java.base/java.nio=ALL-UNNAMED`, `--enable-native-access=ALL-UNNAMED`, `-Dio.netty.tryReflectionSetAccessible=true` and, on JDK 25+, `-Dio.netty.noUnsafe=false`.
+  > `-Dio.netty.noUnsafe=false` is XTDB's remedy for Netty's JDK 25 default.
 - **In-memory node** — tests use an in-memory XTDB node for clean, isolated state.
 
 ### Mock Store Testing

@@ -113,6 +113,17 @@ XTDB docstring recommends. The fix: a bounded HikariCP pool per tenant over the 
 implements `javax.sql.DataSource`), borrowing one pooled connection per `:sql`-mode store
 operation. The `:xtql` pathway is untouched.
 
+> [!NOTE]
+> **The pool now adds a pgwire hop rather than saving a connection setup**, as of XTDB 2.2.0-beta3.
+>
+> - **Handed the node, `xt/q` and `xt/execute-tx` run in-process over ADBC** (`xtdb/node/impl.clj`)
+>   There is no per-call pgwire connection to amortise.
+>
+> - **Only a `DataSource` that isn't the node goes over pgwire**
+>   That is the store's Hikari pool, or `xt/client`, and the pool needs the node's pgwire server running.
+>
+> - **The comparison above would need re-measuring against passing the node**
+
 Server-side latency (Inferno US Core, 944 requests, same machine; datomic = 940 requests):
 
 | run | total ms | p50 | p95 |
@@ -132,6 +143,10 @@ confirming the win is connection **reuse**, not pre-warming. Pool sizing is tuna
 - The XTDB node starts a pgwire server by default (`Server started at postgres://...`);
   `xt/q` connects to it as a JDBC client even in-process. This is why connection reuse
   matters even though everything is one JVM.
+
+  > [!NOTE]
+  > **No longer true of `xt/q` on the node, which runs in-process**, as of XTDB 2.2.0-beta3.
+  > See the note under "What DID help".
 - XTDB's `emit-cache` (Clojure-codegen cache, maxSize 16) is built **per plan-cache entry**,
   so it sees only one table's `scan-vec-types` and does **not** thrash across resource types.
   Stable, repeated SQL text therefore caches fully; only genuinely distinct shapes recompile.
@@ -139,6 +154,15 @@ confirming the win is connection **reuse**, not pre-warming. Pool sizing is tuna
   (`ExceptionInInitializerError`) under 2.2.0-beta1 — this predates the pooling change
   (reproduced on the unmodified tree) and is a kaocha-harness/environment issue, not a store
   bug. The authoritative gate is the Inferno integration run.
+
+  > [!NOTE]
+  > **On JDK 25 a node fails to start without `-Dio.netty.noUnsafe=false`**, as of XTDB 2.2.0-beta3.
+  > The failure is an `UnsupportedOperationException` from Netty's `EmptyByteBuf.memoryAddress`, because Netty disables `sun.misc.Unsafe` by default from JDK 25.
+  > With the flag the node starts.
+  >
+  > - **Whether that is what kaocha hit under beta1 isn't recorded**
+  >
+  > - **XTDB's documented JVM flags are `--add-opens=java.base/java.nio=ALL-UNNAMED`, `--enable-native-access=ALL-UNNAMED`, `-Dio.netty.tryReflectionSetAccessible=true` and, on JDK 25+, `-Dio.netty.noUnsafe=false`**
 
 ## Remaining gap and possible future levers
 

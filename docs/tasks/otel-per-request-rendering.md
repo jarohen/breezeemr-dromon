@@ -49,6 +49,10 @@ Build a dev-only middleware that:
    {"resourceType":"Patient","id":"123",...}
    ```
 
+> [!NOTE]
+> **XTDB emits `xtdb.query` but no `xtdb.plan` or `xtdb.execute` child spans**, as of XTDB 2.2.0-beta3.
+> The tree above is illustrative below `xtdb.query`.
+
 The tree is built client-side from the JSON header so the server never has
 to ASCII-render. Widths auto-scale to terminal columns via `tput cols`.
 

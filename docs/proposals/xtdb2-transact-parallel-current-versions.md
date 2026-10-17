@@ -32,6 +32,16 @@ calls, each ~5 ms. The 5 ms is dominated by xt/q fixed overhead (SQL
 planning + IPC to the XTDB node), not the row count: 26 of the 27 types
 have a single id in the IN list.
 
+> [!NOTE]
+> **The fixed cost depends on what `xt/q` is handed**, as of XTDB 2.2.0-beta3.
+>
+> - **Handed the node, `xt/q` runs in-process over ADBC** (`xtdb/node/impl.clj`)
+>   The fixed cost is planning plus an in-process connection per call.
+>
+> - **Handed a `DataSource` that isn't the node, it goes over pgwire**
+>   That is the store's Hikari pool, or `xt/client`.
+>   The fixed cost is planning plus a pgwire round trip, and the pool needs the node's pgwire server running.
+
 These queries are independent of one another. They can be issued
 concurrently. This proposal evaluates whether parallelism would actually
 help and how to wire it up safely.

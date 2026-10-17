@@ -37,7 +37,9 @@ JVM args required for XTDB v2 tests (already in deps.edn):
 The `fhir-store-xtdb2` `:test` alias also passes `--sun-misc-unsafe-memory-access=allow`
 and `-Dio.netty.noUnsafe=false`, and the `fhir-search-bench` `:xtdb` alias the first of
 those; it arrived in JDK 23 (JEP 471) and older JDKs reject it, so those two aliases need
-Java 23+.
+Java 23+. XTDB's own documented set (2.2.0-beta3) is
+`--add-opens=java.base/java.nio=ALL-UNNAMED`, `--enable-native-access=ALL-UNNAMED`,
+`-Dio.netty.tryReflectionSetAccessible=true` and, on JDK 25+, `-Dio.netty.noUnsafe=false`.
 
 ### Inferno FHIR compliance tests
 ```bash

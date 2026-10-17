@@ -99,6 +99,11 @@ transaction internals emit child spans. The plumbing needed on our side:
 3. Confirm in Jaeger that `http.request` (dromon) is the parent of
    `xtdb.query` / `xtdb.tx` spans.
 
+   > [!NOTE]
+   > **XTDB's spans are `xtdb.query` and `xtdb.transaction.*`**, as of XTDB 2.2.0-beta3.
+   > There is no `xtdb.tx`.
+   > The transaction spans (e.g. `xtdb.transaction.sql`) are emitted by the indexer (`SourceLogTxIndexer.kt`, `TxResolver.kt`), not on the request's thread.
+
 Step 2 is the only real change — Telemere's own handler already puts a
 span on the context stack, so a thin `with-otel-context` helper in the
 store-protocol module keeps the FHIR handler code mostly unchanged.

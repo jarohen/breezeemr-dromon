@@ -83,6 +83,11 @@ component. The marginal cost of an additional INSERT op inside a tx is
    **Since `4f18453` ("skip the existence ASSERT for server-minted ids"), the ASSERT runs only for a client-supplied id.**
    It is a point lookup whose cost grows with the table, and it bounds concurrent creates.
 
+   > [!WARNING]
+   > **An INSERT on an existing `_id` is an upsert**, as of XTDB 2.2.0-beta3.
+   > Over its valid-time range (now to end-of-time by default) the later write supersedes the earlier one, with no overlapping versions and no error.
+   > That is a silent lost write, which the ASSERT guards against.
+
 3. **The actual lever for "make creates faster" is batching.** The
    `transact-transaction` path amortizes the ~15 ms fixed-per-tx cost
    across N ops, dropping the per-row cost to ~1 ms. Any background
@@ -93,6 +98,16 @@ component. The marginal cost of an additional INSERT op inside a tx is
    addressable from application code.** It is the price of reaching
    the transactor and back. Short of changing storage layers, application
    code cannot push it lower.
+
+   > [!NOTE]
+   > **Nothing in XTDB's source accounts for a fixed ~15 ms**, as of XTDB 2.2.0-beta3.
+   >
+   > - **An in-memory node has no network or IPC in this path**
+   >   `xt/q` and `xt/execute-tx` handed the node run in-process over ADBC (`xtdb/node/impl.clj`).
+   >   Only a `DataSource` that isn't the node — the store's Hikari pool, or `xt/client` — goes over pgwire, and the pool needs the node's pgwire server running.
+   >
+   > - **The figure is a measurement from before beta3**
+   >   Beta3 reworked the single-transaction write path (#6102, #6097 and #6115 in the v2.2.0-beta3 release notes).
 
 ## Action items
 
