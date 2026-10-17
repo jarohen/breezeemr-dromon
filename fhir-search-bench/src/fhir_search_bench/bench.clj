@@ -87,6 +87,8 @@
 ;; few dropped intra-patient reference links, which the search workload does not
 ;; touch. In-flight transactions are bounded by `concurrency` for back pressure.
 
+(def ^:private progress-every 50000)
+
 (defn- load-dataset-pooled!
   "Concurrent load. Splits bundles at `max-tx` and runs up to `concurrency`
    synchronous `transact-transaction` calls at once via a fixed thread pool. The
@@ -101,7 +103,14 @@
                  (vec sub))
         tasks  (mapv (fn [chunk]
                        (.submit pool ^java.util.concurrent.Callable
-                                (fn [] (.addAndGet ok (long (load-chunk! store chunk))))))
+                                (fn []
+                                  (let [n    (long (load-chunk! store chunk))
+                                        done (.addAndGet ok n)]
+                                    (when (not= (quot (- done n) progress-every) (quot done progress-every))
+                                      (let [secs (/ (- (now-ns) t0) 1e9)]
+                                        (log (format "  %d / %d loaded, %.1f s, %d res/s"
+                                                     done total secs (Math/round (/ (double done) secs))))))
+                                    done))))
                      chunks)]
     (try (doseq [^java.util.concurrent.Future t tasks] (.get t))
          (finally (.shutdown pool)))
