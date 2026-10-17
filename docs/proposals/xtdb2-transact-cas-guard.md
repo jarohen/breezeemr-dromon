@@ -2,7 +2,17 @@
 
 ## Status
 
-Proposed. Not started. Larger and riskier than the parallel-fetch
+**Superseded, not implemented.**
+Since `36c5737` ("derive versionIds from commit time"), the goal below is met without any of Options A-C.
+
+- **A versionId comes from the commit's system time**
+  `transact-transaction` reads current versions only for a PUT carrying `ifMatch`.
+
+- **The update guard is `version-assert-op`, added only when If-Match is supplied**
+
+- **The Context section describes the code before that change**
+
+Originally: proposed, not started. Larger and riskier than the parallel-fetch
 proposal in [`xtdb2-transact-parallel-current-versions.md`](xtdb2-transact-parallel-current-versions.md);
 worth pursuing only if that one fails to land us comfortably ahead of
 datomic.

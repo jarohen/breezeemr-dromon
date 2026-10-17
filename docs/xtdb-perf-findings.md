@@ -4,6 +4,20 @@ Accumulated knowledge from profiling and optimizing the `fhir-store-xtdb2` backe
 against the Inferno US Core v6.1.0 suite, using the datomic backend as a reference.
 Work done 2026-06-02 on XTDB `com.xtdb/xtdb-core 2.2.0-beta1`.
 
+> [!NOTE]
+> **The store has changed since this was written**
+>
+> - **It pins XTDB 2.2.0-beta3**
+>
+> - **The per-tenant pool's defaults set `:prepare-threshold 0`**
+>
+> - **The pool keeps a connection on XTDB's 0A000 / 08P01 statement refusals rather than evicting it**
+>   See the XTDB facts in `CLAUDE.md`.
+>
+> - **The `fhir-store-xtdb2` `:test` alias passes `--sun-misc-unsafe-memory-access=allow` and `-Dio.netty.noUnsafe=false`**
+>   Its comment says the first keeps node init from dying in `DefaultAllocationManagerFactory.<clinit>`.
+>   See the kaocha error under "Notes / gotchas".
+
 ## TL;DR
 
 - Starting point: xtdb was ~1.9x slower than datomic on server-side per-request latency

@@ -33,7 +33,11 @@ cd fhir-defintions-to-malli && clj -M:test # Cognitect test-runner
 ```
 
 JVM args required for XTDB v2 tests (already in deps.edn):
-`--add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED`
+`--add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED`.
+The `fhir-store-xtdb2` `:test` alias also passes `--sun-misc-unsafe-memory-access=allow`
+and `-Dio.netty.noUnsafe=false`, and the `fhir-search-bench` `:xtdb` alias the first of
+those; it arrived in JDK 23 (JEP 471) and older JDKs reject it, so those two aliases need
+Java 23+.
 
 ### Inferno FHIR compliance tests
 ```bash
@@ -143,7 +147,7 @@ backends or schema packages on the classpath.
 
 ### Key modules
 - **fhir-store-protocol** -- `IFHIRStore` protocol: create, read, update, delete, search, history, vread, transact-bundle. Every write verb also takes a trailing `opts` map carrying `:if-match` and `:tx-metadata`; `ITxMetadataStore` says whether a store actually keeps the latter
-- **fhir-store-xtdb2** -- Primary backend; maps FHIR resources to dynamic SQL tables, stores original JSON in `fhir_source` column
+- **fhir-store-xtdb2** -- Primary backend; maps FHIR resources to dynamic SQL tables, explodes each resource into columns (there is no raw-JSON column; reads decode from the columns)
 - **fhir-store-mock** -- Atom-backed in-memory store for tests. A lifecycle's `:db` is the immutable pre-write tenant state (`IBasisReadStore`), and its `[:mock.row/put ...]` / `[:mock.row/cas ...]` tx-ops write host rows in the same swap as the resource; `fhir-store.mock.test-setup` is its store-native test harness (deterministic clock and ids, seeding, `swap-resource!`, pinned and strict searches, a content-free write/read/search log, snapshots)
 - **fhir-store-http** -- `IFHIRStore` over a remote FHIR REST API (GCP Healthcare, HAPI, another dromon); one base URL per tenant. Snapshot verbs and tenant create/delete answer 501, `:tx-metadata` is dropped, lifecycle `tx-ops` are Bundle entries sent in one transaction with the write. See its README for what differs from a local store
 - **fhir-server** -- Reitit routing, Ring handlers, JWT auth, Keto authorization, Muuntaja content negotiation, FHIR exception middleware. No static dep on any malli schema package or store impl.
@@ -209,7 +213,8 @@ Rules that are easy to get wrong, all enforced in `server.temporal`:
 - **A timeline omits valid-time bounds on a single-axis store** rather than
   emitting null ones: null reads as end-of-time, absent means no such axis.
 
-XTDB facts verified against 2.2.0-beta1, worth not rediscovering:
+XTDB facts verified against 2.2.0-beta1 unless a bullet names a later version
+(the pinned version is 2.2.0-beta3), worth not rediscovering:
 
 - `FOR ALL VALID_TIME` and `FOR VALID_TIME ALL` both parse; `AS OF ?` binds a
   JDBC param on either axis. The temporal clause sits right after the table
@@ -244,8 +249,9 @@ XTDB facts verified against 2.2.0-beta1, worth not rediscovering:
   java.time value. Prefer an `Instant`: a `LocalDate` bound through the pool
   (pgwire) is cast in the JVM's default zone, while the same value passed to
   the node's `xt/q` is cast as UTC.
-- `vread`'s `vid` is the FHIR versionId, the `fhir_version` column, as in the
-  mock and datomic stores. It is matched across `FOR ALL SYSTEM_TIME`, never
+- `vread`'s `vid` is the FHIR versionId: a stored `fhir_version`, or, for a
+  version written since versionIds came from commit time (which stores none),
+  the id derived from its `_system_from`. It is matched across `FOR ALL SYSTEM_TIME`, never
   read `AS OF` a time; point-in-time reads are `$as-of`.
 - A string holding an unpaired UTF-16 surrogate (a lone `\uD83D`) is stored as
   `?`, silently (verified on 2.2.0-beta3). pgjdbc's parameter encoding replaces
@@ -361,7 +367,8 @@ telemere trace -> wrap-params -> muuntaja format -> fhir-exceptions -> fhir-deco
 ## Important Conventions
 
 - The project is named `fhir-defintions-to-malli` (note the typo in "defintions") -- use this spelling consistently in paths and references
-- Java 21+ is required (XTDB v2 dependency)
+- Java 21+ is required (XTDB v2 dependency); the `fhir-store-xtdb2` tests and the
+  bench's `:xtdb` alias need Java 23+ for `--sun-misc-unsafe-memory-access=allow`
 - **A reopened XTDB node answers from part of its log until a read awaits
   the log's end** (2.2.0-beta3). `start-node` returns before an on-disk node
   has replayed, and a read waits only for transactions submitted through that

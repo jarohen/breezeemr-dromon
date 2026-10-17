@@ -80,6 +80,9 @@ component. The marginal cost of an additional INSERT op inside a tx is
    one `update-resource` already throws. This was landed as part of
    this investigation.
 
+   **Since `4f18453` ("skip the existence ASSERT for server-minted ids"), the ASSERT runs only for a client-supplied id.**
+   It is a point lookup whose cost grows with the table, and it bounds concurrent creates.
+
 3. **The actual lever for "make creates faster" is batching.** The
    `transact-transaction` path amortizes the ~15 ms fixed-per-tx cost
    across N ops, dropping the per-row cost to ~1 ms. Any background

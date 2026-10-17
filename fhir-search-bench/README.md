@@ -35,8 +35,10 @@ src/fhir_search_bench/
   bench.clj     per-backend load + search harness; report aggregator
 ```
 
-Resources are loaded one FHIR transaction bundle at a time (the shared
-hospital/practitioner-information bundles first, then each patient bundle),
+Resources are loaded as FHIR transaction bundles (the shared
+hospital/practitioner-information bundles first, then the patient bundles),
+through a fixed thread pool running up to `:concurrency` transactions at once
+(default 4), with any bundle over `:max-tx` resources (default 2000) split,
 keeping Synthea's native `urn:uuid` intra-bundle references so each store's
 `transact-transaction` resolves them atomically.
 
@@ -46,7 +48,8 @@ fresh store. Its result file is then compared with xtdb2's by `bb report`.
 
 ## Prerequisites
 
-- **Java 21** (XTDB v2). The bb tasks pin `/usr/lib/jvm/java-21-openjdk-amd64`.
+- **Java 23+**. The bb tasks run on the ambient JVM, and the `:xtdb` alias passes
+  `--sun-misc-unsafe-memory-access=allow`, which arrived in JDK 23 (JEP 471).
 
 ## Usage
 
@@ -69,8 +72,7 @@ Each run writes `target/bench-<backend>.edn` in the directory it ran from;
 ### Without bb
 
 ```bash
-JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
-  clojure -X:xtdb    fhir-search-bench.bench/run :backend :xtdb2
+clojure -X:xtdb fhir-search-bench.bench/run :backend :xtdb2
 clojure -X fhir-search-bench.bench/report
 ```
 

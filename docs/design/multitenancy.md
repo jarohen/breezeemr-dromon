@@ -14,7 +14,8 @@ deployment.
 
 ## Decision: Siloed (Database per Tenant) + Path-Based Routing
 Dromon uses the **Database per Tenant (Siloed)** approach. Every tenant maps to a completely
-separate database (XTDB node), with no sharing.
+separate database, with no sharing: its own in-process XTDB node by default, or its own
+database ATTACHed to one standalone XTDB server when the store is given `:server`.
 
 ### API routing
 The tenant ID is extracted from the **URL route**: `/:tenant-id/fhir/...`. Top-level middleware
@@ -23,7 +24,7 @@ request map, making the target tenant unambiguous.
 
 ### Database layer
 The `IFHIRStore` implementation routes connections per tenant; each `tenant-id` maps to an
-independent node / connection pool. **Tenant provisioning is explicit** via the protocol's
+independent node or server database, each behind its own connection pool. **Tenant provisioning is explicit** via the protocol's
 `create-tenant` / `warmup-tenant` / `delete-tenant` lifecycle — the `test-server` seeder calls
 `create-tenant {:if-exists :ignore}` and `warmup-tenant` at boot, shifting cold-start cost out
 of the first request. See `backends.md` and `docs/tasks/fhir-store-tenant-lifecycle-protocol.md`.

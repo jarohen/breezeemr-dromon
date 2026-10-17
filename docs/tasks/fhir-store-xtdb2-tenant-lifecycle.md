@@ -1,9 +1,20 @@
 # fhir-store-xtdb2 — Tenant Lifecycle Implementation
 
+> [!NOTE]
+> **This is implemented** (see `tasklist.md`).
+>
+> - **The snippets below predate the per-tenant connection pool and `:server` mode**
+>   `XTDBStore`'s tenant-lifecycle methods are the authoritative version.
+>
+> - **A tenant entry is now `{:node :pool :declared ...}`**
+>
+> - **`delete-tenant` closes the pool, then the node**
+>   In `:server` mode with `:close-storage? true`, it also detaches the tenant's database.
+
 ## Problem
 
 `fhir-store-xtdb2` today creates tenants lazily via `get-or-create-node`
-at `fhir-store-xtdb2/src/fhir_store_xtdb2/core.clj:591`, called from
+in `fhir-store-xtdb2/src/fhir_store_xtdb2/core.clj`, called from
 every `IFHIRStore` method on the `XTDBStore` record. The effect in
 practice (visible in today's OTel comparison run):
 

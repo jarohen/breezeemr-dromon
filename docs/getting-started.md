@@ -6,7 +6,8 @@ bitemporal storage model, see the [README](../README.md).
 
 ## Prerequisites
 
-- **Java 21** (required by XTDB v2)
+- **Java 21+** (required by XTDB v2); **Java 23+** to run the `fhir-store-xtdb2` tests
+  or the `fhir-search-bench` `:xtdb` alias, which pass `--sun-misc-unsafe-memory-access=allow`
 - **Clojure CLI** (`clj` / `clojure`)
 - **Babashka** (`bb`) for task automation
 - **Podman** or **Docker** for integration tests and Ory services
@@ -79,8 +80,8 @@ fhir-defintions-to-malli --> fhir-primitives --> com.breezeehr/malli-decimal (ex
 ### XTDB v2 (`fhir-store-xtdb2`)
 
 The primary backend. FHIR JSON is exploded into discrete SQL columns mapped to
-its schema counterparts, so every attribute is indexed for tabular search,
-while the original JSON is retained in a `fhir_source` column. Version history
+its schema counterparts, so every attribute is indexed for tabular search;
+reads decode the resource back from those columns. Version history
 falls out of XTDB's native temporal support rather than being maintained
 separately. Supports 20+ FHIR search parameter types including date ranges,
 token searches, reference resolution, and composite parameters.
@@ -355,7 +356,7 @@ are unaffected.
 | Component | Version | Role |
 |-----------|---------|------|
 | Clojure | 1.12.x | Language |
-| XTDB | 2.2.0-beta1 | Bitemporal database backend |
+| XTDB | 2.2.0-beta3 | Bitemporal database backend |
 | Malli | 0.20.1 | Schema validation and route generation |
 | Reitit | 0.10.1 | HTTP routing |
 | Jetty | ring-jetty9 0.39.2 | HTTP server with virtual threads |

@@ -25,8 +25,8 @@ lifecycle operations:
 
 ## XTDB v2 Backend
 - **Data modeling** — FHIR JSON is natively exploded into discrete SQL columns mapped to its
-  schema counterparts, so every attribute is intrinsically indexed for tabular search, while the
-  original JSON is retained in a `fhir_source` column and full history is preserved without
+  schema counterparts, so every attribute is intrinsically indexed for tabular search; reads
+  decode the resource back from those columns, and full history is preserved without
   opaque-JSON extraction penalties.
 - **Schema** — XTDB v2 is schema-on-write; tables are created dynamically per resource type.
 - **Temporal features** — built-in system time and valid time make FHIR versioning (`_history`)
@@ -34,13 +34,18 @@ lifecycle operations:
 - **Query mode** — search is translated to **SQL by default** (`:query-mode :sql` in
   `fhir-store-xtdb2/core.clj`); an **optional XTQL path** (`query_xtql.clj`,
   `:query-mode :xtql`) exists and is parity-tested against the SQL path. Both use `:sql` ASSERT
-  ops for optimistic concurrency.
+  ops for optimistic concurrency. `:xtql` is unavailable in `:server` mode, and temporal reads
+  require `:sql`.
 - **Transaction bundles** — `Bundle` type `transaction` is supported at the store layer via
   `transact-transaction`.
+- **Embedded or remote** — by default the store starts an in-process XTDB node per tenant. With
+  `:server` set it starts none: each tenant is a database ATTACHed to a standalone XTDB server and
+  reached through `xt/client`, with the server owning every node-level setting.
 
 ## Tenant Isolation
 Dromon implements a "Database per Tenant (Siloed)" strategy: each `tenant-id` maps to a distinct
-XTDB node / connection pool, selected by the `/:tenant-id/fhir/` route prefix. Tenant
+XTDB node (embedded) or a distinct database on one XTDB server (`:server` mode), each behind its
+own connection pool, selected by the `/:tenant-id/fhir/` route prefix. Tenant
 provisioning is explicit via the `IFHIRStore` `create-tenant` / `warmup-tenant` /
 `delete-tenant` lifecycle. See `multitenancy.md`.
 
@@ -68,8 +73,10 @@ indistinguishable from an attributed one, which is exactly what the split preven
 - **Java NIO access** — XTDB v2 uses Apache Arrow, which needs reflective NIO access on
   JDK 16+. Test runners and REPLs must pass
   `--add-opens=java.base/java.nio=ALL-UNNAMED` (and the Arrow-specific `--add-opens`) to avoid
-  `InaccessibleObjectException`. JDK 24+ additionally needs
-  `--sun-misc-unsafe-memory-access=allow` (JEP 498). These args are already in `deps.edn`.
+  `InaccessibleObjectException`. The `fhir-store-xtdb2` `:test` alias also passes
+  `--sun-misc-unsafe-memory-access=allow` (JEP 471; rejected before JDK 23) and
+  `-Dio.netty.noUnsafe=false`; the bench's `:xtdb` alias passes the first. These args are
+  already in `deps.edn`.
 - **In-memory node** — tests use an in-memory XTDB node for clean, isolated state.
 
 ### Mock Store Testing

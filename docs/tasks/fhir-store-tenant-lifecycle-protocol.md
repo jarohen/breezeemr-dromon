@@ -8,7 +8,7 @@ no method to create, destroy, or warm up a tenant. The side effects of
 having no tenant lifecycle today:
 
 1. **Implicit lazy creation is leaking into hot paths.**
-   - `fhir-store-xtdb2/core.clj:591 get-or-create-node` spins up an XTDB
+   - `fhir-store-xtdb2/core.clj` `get-or-create-node` spins up an XTDB
      node on the *first* request against a tenant. That first request
      pays ~2.5 s of cold-start cost (`store/node.start` span in
      today's OTel comparison, 2 calls × 2 493 ms each).

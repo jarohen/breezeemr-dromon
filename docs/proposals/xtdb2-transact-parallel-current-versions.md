@@ -2,7 +2,10 @@
 
 ## Status
 
-Proposed. Not started.
+**Superseded, not implemented.**
+Since `36c5737` ("derive versionIds from commit time"): versionIds no longer come from `next-version` → `current-versions-bulk` runs only for PUTs carrying `ifMatch` → the phase this proposal would parallelise is gone from the common write path.
+
+Originally: proposed, not started.
 
 ## Context
 

@@ -71,12 +71,12 @@ This may fail because XTDB v2 stores `description` as a nested struct and `UNNES
 
 ## Condition asserted-date Search (UNRESOLVED)
 
-`GET /Condition?patient=123&asserted-date=2024-01-15` — Inferno skips with "Could not find values for all search params". The Condition resources DO have `recordedDate` in their JSON (stored in `fhir_source`). But Inferno's FHIRPath extraction can't find the value. Possible causes:
+`GET /Condition?patient=123&asserted-date=2024-01-15` — Inferno skips with "Could not find values for all search params". The Condition resources DO have `recordedDate` in their JSON. But Inferno's FHIRPath extraction can't find the value. Possible causes:
 - The server's Malli/Muuntaja response encoding strips `recordedDate` from the response
 - Inferno's FHIRPath for `asserted-date` expects a specific extension in addition to `recordedDate`
 
 ## QuestionnaireResponse `_questionnaire` Extension (UNRESOLVED)
 
-The `_questionnaire` FHIR primitive extension is stored correctly in `fhir_source` JSON and returned by the server. But Inferno reports "Could not find QuestionnaireResponse.questionnaire.extension:questionnaireDisplay". This might be:
+The `_questionnaire` FHIR primitive extension is stored correctly and returned by the server. But Inferno reports "Could not find QuestionnaireResponse.questionnaire.extension:questionnaireDisplay". This might be:
 - The extension URL used (`us-core-extension-questionnaire-uri`) may be wrong for the `questionnaireDisplay` slice
 - The slice name `questionnaireDisplay` suggests it expects a display-type extension, not a URI extension

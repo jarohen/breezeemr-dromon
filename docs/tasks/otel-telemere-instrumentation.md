@@ -155,7 +155,7 @@ is the global one so XTDB picks it up at node start.
 
 - `fhir-server/src/server/middleware.clj:58` — existing telemere trace middleware
 - `fhir-server/src/server/logging.clj:2` — handler install point
-- `fhir-store-xtdb2/src/fhir_store_xtdb2/core.clj:557` — per-tenant node startup
+- `fhir-store-xtdb2/src/fhir_store_xtdb2/core.clj` — per-tenant node startup
   (the cold-start hot spot the XTDB span tree should make obvious)
 - `dromon-datomic/perf-analysis/REPORT.md` — latency baseline the span
   tree should match
