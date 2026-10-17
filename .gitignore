@@ -1,5 +1,7 @@
 # Ignore clj-kondo cache
 **/.clj-kondo/.cache
+**/.clj-kondo/imports/
+**/.lsp/.cache
 **/.idea/
 **/*.iml
 **/.vscode/
