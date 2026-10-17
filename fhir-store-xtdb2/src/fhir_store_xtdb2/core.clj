@@ -210,6 +210,15 @@
       (dissoc :_id)
       (assoc :xt/id (:_id doc))))
 
+(defn- coalesce-doc-ops [tx-ops]
+  (into []
+        (mapcat (fn [[[op] :as run]]
+                  (if (#{:put-docs :delete-docs} op)
+                    (map (fn [[table ops]] (into [op table] (map #(nth % 2)) ops))
+                         (group-by second run))
+                    run)))
+        (partition-by first tx-ops)))
+
 (defn ^:no-doc extract-and-build-sql
   "Takes a resource map and resource-type, builds a parameterized SQL INSERT for XTDB.
    Optional kwargs:
@@ -2838,6 +2847,7 @@
                        (update acc :entry-results conj em)))
                    {:tx-ops [] :lifecycle-writes [] :entry-results []}
                    entry-metas))
+          tx-ops (coalesce-doc-ops tx-ops)
           own-op-count (count tx-ops)
           guarded? (some :if-match entry-metas)
           tx-ops (into tx-ops (mapcat lifecycle-tx-ops) lifecycle-writes)]
