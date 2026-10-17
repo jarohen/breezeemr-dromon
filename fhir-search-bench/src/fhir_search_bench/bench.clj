@@ -179,8 +179,9 @@
                      mega-patient bundle can't dominate the load.
    - :concurrency    max in-flight transactions during load (default 4), the
                      same bound for every store so loads compare.
-   - :synthea-dir    Synthea fhir bundle dir (default synthea-output/fhir)"
-  [{:keys [backend store-fn max-resources max-tx concurrency synthea-dir]
+   - :synthea-dir    Synthea fhir bundle dir (default synthea-output/fhir)
+   - :skip-search?   load only, without the search queries"
+  [{:keys [backend store-fn max-resources max-tx concurrency synthea-dir skip-search?]
     :or   {max-resources 10000 max-tx 2000 concurrency 4 synthea-dir "synthea-output/fhir"}}]
   (when-not (keyword? backend)
     (throw (ex-info "Pass :backend, the result label (e.g. :xtdb2)" {:backend backend})))
@@ -202,13 +203,16 @@
           _ (log "Loaded" (:loaded load-stats) "/" total
                  "in" (format "%.1f" (:elapsed-ms load-stats)) "ms"
                  (str "(" (:res-per-sec load-stats) " res/s)"))
-          _ (log "Running" (count queries/queries) "search queries ...")
+          _ (log "Observations loaded:" (db/count-resources store tenant :Observation {} (schema/registry-for "Observation"))
+                 "of" (get by-type "Observation"))
+          queries (if skip-search? [] queries/queries)
+          _ (log "Running" (count queries) "search queries ...")
           query-results (mapv (fn [q]
                                  (let [r (bench-query store q)]
                                    (log (format "  %-22s hits=%-6d median=%.2f ms"
                                                 (name (:id q)) (:hits r) (:median-ms r)))
                                    r))
-                               queries/queries)
+                               queries)
           result {:backend       backend
                   :dataset       {:total total :patients patients :by-type by-type}
                   :load          load-stats

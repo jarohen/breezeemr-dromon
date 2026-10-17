@@ -2725,7 +2725,9 @@
      {:id :store/transact-transaction
       :data {:tenant-id (str tenant-id) :entry-count (count entries)}}
     (let [{:keys [pool] :as entry} (get-or-create-entry this tenant-id)]
-     (with-open [conn (jdbc/get-connection pool)]
+     (with-open [conn (if (= "adbc" (System/getenv "DROMON_XTDB_CONN"))
+                        (xt/open-adbc-conn (:node entry))
+                        (jdbc/get-connection pool))]
       (let [node conn
           entry-metas
           (ftrace/trace!
@@ -2783,12 +2785,6 @@
           ;; response metadata (new version, final resource with :id+:meta
           ;; populated). This lets the response builder assemble the Bundle
           ;; without a post-commit round-trip.
-          ;; Per-entry write-op emitter. The SQL pathway emits
-          ;; [:sql insert-stmt args] / [:sql delete-stmt args] — the XTQL
-          ;; pathway emits [:put-docs table doc] / [:delete-docs table id],
-          ;; bypassing the INSERT planner entirely. execute-tx accepts both
-          ;; shapes (and a mix with [:sql ASSERT ...]) in one atomic call.
-          xtql-mode? (= query-mode :xtql)
           lc-ctx (lifecycle-ctx this tenant-id opts)
           ;; `resource` is the lifecycle-PREPARED body for POST/PUT, never
           ;; the entry's submitted one.
@@ -2796,18 +2792,11 @@
           (fn [{:keys [method resource-type id] :as _em} resource _vid]
             (case method
               ("POST" "PUT")
-              (if xtql-mode?
-                [:put-docs (keyword resource-type)
-                 (doc->put-doc
-                  (encode-resource-doc resource-type id resource storage-encoders))]
-                (let [[sql args] (extract-and-build-sql
-                                   resource-type id resource storage-encoders)]
-                  [:sql sql args]))
+              [:put-docs (keyword resource-type)
+               (doc->put-doc
+                (encode-resource-doc resource-type id resource storage-encoders))]
               "DELETE"
-              (if xtql-mode?
-                [:delete-docs (keyword resource-type) id]
-                [:sql (format "DELETE FROM %s WHERE _id = ?" (table-name resource-type))
-                 [id]])))
+              [:delete-docs (keyword resource-type) id]))
           ;; POST/PUT entries run the lifecycle here, once each id is chosen
           ;; and before anything is encoded. Their tx-ops are collected per
           ;; entry and appended after ALL of the bundle's own write ops.
