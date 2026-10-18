@@ -1,6 +1,7 @@
 (ns fhir-store-xtdb2.core
   (:require [xtdb.api :as xt]
             [xtdb.basis :as basis]
+            [xtdb.flight-sql :as fsql]
             [xtdb.node :as xtn]
             [next.jdbc :as jdbc]
             [clojure.string :as str]
@@ -2566,6 +2567,30 @@
   (not-empty (cond-> (dissoc opts :if-match)
                if-match (assoc :if-match if-match))))
 
+(def ^:private ^ThreadLocal fsql-conns
+  "Per thread, node -> its open Flight SQL connection: a connection carries its own
+   gRPC client and session, so opening one per write would time the handshake."
+  (ThreadLocal/withInitial (reify java.util.function.Supplier (get [_] (atom {})))))
+
+(defn- fsql-conn [node]
+  (let [conns (.get fsql-conns)]
+    (or (get @conns node)
+        (let [conn (fsql/open-conn {:port (.getFlightSqlPort ^xtdb.api.Xtdb node)})]
+          (swap! conns assoc node conn)
+          conn))))
+
+(defmacro ^:private with-write-conn
+  "Runs `body` with `sym` bound to the connection a write goes over, chosen by
+   DROMON_XTDB_CONN: `adbc` an in-process connection on the tenant's node, `fsql`
+   this thread's Flight SQL connection to it (kept open across writes), otherwise
+   one borrowed from the store's pool (pgwire)."
+  [[sym entry] & body]
+  `(let [entry# ~entry]
+     (case (System/getenv "DROMON_XTDB_CONN")
+       "fsql" (let [~sym (fsql-conn (:node entry#))] ~@body)
+       "adbc" (with-open [~sym (xt/open-adbc-conn (:node entry#))] ~@body)
+       (with-open [~sym (jdbc/get-connection (:pool entry#))] ~@body))))
+
 (defrecord XTDBStore [nodes node-config storage-encoders read-decoders query-mode pool-opts]
   IFHIRStore
 
@@ -2577,11 +2602,11 @@
     (ftrace/trace!
      {:id :store/create
       :data {:tenant-id (str tenant-id) :resource-type (name resource-type) :id id}}
-     (let [{:keys [node pool]} (entry-for this tenant-id resource-type)]
+     (let [{:keys [node] :as entry} (entry-for this tenant-id resource-type)]
        (case query-mode
          :xtql (create-xtql node resource-type id resource storage-encoders
                             (lifecycle-ctx this tenant-id (not-empty (dissoc opts :id-minted?))))
-         (with-open [conn (jdbc/get-connection pool)]
+         (with-write-conn [conn entry]
            ;; :id-minted? is a hint to the store, not one of the host's
            ;; opts, so a lifecycle sees the opts without it.
            (create-sql conn resource-type id resource storage-encoders
@@ -2618,11 +2643,11 @@
     (ftrace/trace!
      {:id :store/update
       :data {:tenant-id (str tenant-id) :resource-type (name resource-type) :id id}}
-     (let [{:keys [node pool]} (entry-for this tenant-id resource-type)]
+     (let [{:keys [node] :as entry} (entry-for this tenant-id resource-type)]
        (case query-mode
          :xtql (update-xtql node resource-type id resource opts storage-encoders
                             (lifecycle-ctx this tenant-id opts))
-         (with-open [conn (jdbc/get-connection pool)]
+         (with-write-conn [conn entry]
            (update-sql conn resource-type id resource opts storage-encoders
                        (lifecycle-ctx this tenant-id opts)))))))
 
@@ -2733,10 +2758,8 @@
     (ftrace/trace!
      {:id :store/transact-transaction
       :data {:tenant-id (str tenant-id) :entry-count (count entries)}}
-    (let [{:keys [pool] :as entry} (get-or-create-entry this tenant-id)]
-     (with-open [conn (if (= "adbc" (System/getenv "DROMON_XTDB_CONN"))
-                        (xt/open-adbc-conn (:node entry))
-                        (jdbc/get-connection pool))]
+    (let [entry (get-or-create-entry this tenant-id)]
+     (with-write-conn [conn entry]
       (let [node conn
           entry-metas
           (ftrace/trace!

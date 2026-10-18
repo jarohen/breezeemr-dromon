@@ -175,6 +175,75 @@
        :max-ms      (->ms (last times))
        :res-per-sec (when (and (pos? secs) (pos? hits)) (Math/round (/ hits secs)))})))
 
+;; ── Write latency ───────────────────────────────────────────────────────────
+;; Single-resource writes, one per transaction, timed per call: the shape a FHIR
+;; client's create and update take, rather than the load's bulk transactions.
+;; Each guard has an unguarded twin, so their difference is what the guard costs.
+
+(defn- latency-summary [samples]
+  (let [a (long-array samples)
+        n (alength a)
+        at (fn [q] (->ms (aget a (min (dec n) (long (Math/floor (* q n)))))))]
+    (java.util.Arrays/sort a)
+    {:n n, :p50-ms (at 0.5), :p90-ms (at 0.9), :p99-ms (at 0.99), :p999-ms (at 0.999), :max-ms (->ms (aget a (dec n)))}))
+
+(defn- observation-samples [bundles n]
+  (->> (mapcat :entries bundles)
+       (map :resource)
+       (filter #(= "Observation" (:resourceType %)))
+       (map #(dissoc % :id :meta))
+       cycle
+       (take n)
+       vec))
+
+(defn- timed-calls
+  "Runs `(f i)` for each i in [0, n) across `concurrency` threads, answering each call's latency in ns."
+  [concurrency n f]
+  (let [pool (java.util.concurrent.Executors/newFixedThreadPool concurrency)]
+    (try
+      (->> (range concurrency)
+           (mapv (fn [t]
+                   (.submit pool ^java.util.concurrent.Callable
+                            (fn []
+                              (mapv (fn [i] (let [t0 (now-ns)] (f i) (- (now-ns) t0)))
+                                    (range t n concurrency))))))
+           (into [] (mapcat #(.get ^java.util.concurrent.Future %))))
+      (finally (.shutdown pool)))))
+
+(defn- bench-write-latency
+  "Times four single-resource Observation writes at `concurrency`:
+   - :create-minted     a create with a server-minted id: no ASSERT
+   - :create-guarded    a create with a client id: `ASSERT NOT EXISTS` on the id
+   - :update-unguarded  an update without If-Match: no ASSERT
+   - :update-guarded    an update with If-Match: a read of the current version,
+                        then `ASSERT EXISTS` on it
+   The updates rewrite the guarded creates' resources, each If-Match naming the
+   version the previous write of that resource returned."
+  [store bundles n concurrency]
+  (let [rtype     :Observation
+        warmup    (min 200 n)
+        resources (observation-samples bundles (+ n warmup))
+        versions  (java.util.concurrent.atomic.AtomicReferenceArray. (int n))
+        id        (fn [variant i] (format "c%d-%s-%d" concurrency (name variant) i))
+        version   (fn [res] (get-in res [:meta :versionId]))
+        variants  [[:create-minted
+                    (fn [i] (db/create-resource store tenant rtype (id :create-minted i) (nth resources i) {:id-minted? true}))]
+                   [:create-guarded
+                    (fn [i] (.set versions i (version (db/create-resource store tenant rtype (id :create-guarded i) (nth resources i)))))]
+                   [:update-unguarded
+                    (fn [i] (.set versions i (version (db/update-resource store tenant rtype (id :create-guarded i) (nth resources i)))))]
+                   [:update-guarded
+                    (fn [i] (.set versions i (version (db/update-resource store tenant rtype (id :create-guarded i) (nth resources i)
+                                                                          {:if-match (.get versions i)}))))]]]
+    (timed-calls concurrency warmup
+                 (fn [i] (db/create-resource store tenant rtype (id :warmup i) (nth resources (+ n i)))))
+    (mapv (fn [[variant f]]
+            (let [r (merge {:variant variant :concurrency concurrency} (latency-summary (timed-calls concurrency n f)))]
+              (log (apply format "  %-17s conc %-2d n=%d  p50=%.2f  p90=%.2f  p99=%.2f  p99.9=%.2f  max=%.2f ms"
+                          (name variant) concurrency ((juxt :n :p50-ms :p90-ms :p99-ms :p999-ms :max-ms) r)))
+              r))
+          variants)))
+
 ;; ── Driver ──────────────────────────────────────────────────────────────────
 
 (defn run
@@ -189,9 +258,13 @@
    - :concurrency    max in-flight transactions during load (default 4), the
                      same bound for every store so loads compare.
    - :synthea-dir    Synthea fhir bundle dir (default synthea-output/fhir)
-   - :skip-search?   load only, without the search queries"
-  [{:keys [backend store-fn max-resources max-tx concurrency synthea-dir skip-search?]
-    :or   {max-resources 10000 max-tx 2000 concurrency 4 synthea-dir "synthea-output/fhir"}}]
+   - :skip-search?   load only, without the search queries
+   - :latency-n      after the load, time this many single-resource writes per
+                     variant (default 0: none); see bench-write-latency
+   - :latency-concurrency  the thread counts to time them at (default [1])"
+  [{:keys [backend store-fn max-resources max-tx concurrency synthea-dir skip-search? latency-n latency-concurrency]
+    :or   {max-resources 10000 max-tx 2000 concurrency 4 synthea-dir "synthea-output/fhir"
+           latency-n 0 latency-concurrency [1]}}]
   (when-not (keyword? backend)
     (throw (ex-info "Pass :backend, the result label (e.g. :xtdb2)" {:backend backend})))
   ;; The stores emit a `t/trace!` per operation; at trace/info level that floods
@@ -222,10 +295,15 @@
                                                 (name (:id q)) (:hits r) (:median-ms r)))
                                    r))
                                queries)
+          write-latency (when (pos? latency-n)
+                          (log "Timing" latency-n "single-resource writes per variant, DROMON_XTDB_CONN ="
+                               (or (System/getenv "DROMON_XTDB_CONN") "jdbc"))
+                          (into [] (mapcat #(bench-write-latency store bundles latency-n %)) latency-concurrency))
           result {:backend       backend
                   :dataset       {:total total :patients patients :by-type by-type}
                   :load          load-stats
-                  :queries       query-results}]
+                  :queries       query-results
+                  :write-latency write-latency}]
       (.mkdirs (io/file "target"))
       (let [out (str "target/bench-" (name backend) ".edn")]
         (spit out (with-out-str (clojure.pprint/pprint result)))
