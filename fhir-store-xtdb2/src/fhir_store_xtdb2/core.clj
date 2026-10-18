@@ -2197,7 +2197,8 @@
   (let [rt-name (name resource-type)
         write (lifecycle-write lc-ctx node :create resource-type id resource)
         resource (:resource write)
-        [sql args] (extract-and-build-sql resource-type id resource storage-encoders)
+        put-op [:put-docs (keyword resource-type)
+                (doc->put-doc (encode-resource-doc resource-type id resource storage-encoders))]
         ;; The ASSERT runs inside the transaction on XTDB's single writer, one
         ;; transaction at a time, and costs a point lookup that grows with the
         ;; table: it bounds concurrent creates. A minted id cannot exist, so,
@@ -2207,7 +2208,7 @@
                   (conj [:sql (format "ASSERT NOT EXISTS (SELECT 1 FROM %s WHERE _id = ?)"
                                       (table-name resource-type))
                          [id]])
-                  true (conj [:sql sql args]))
+                  true (conj put-op))
         tx-ops (into own-ops (lifecycle-tx-ops write))
         tx-key (try
                  (xt/execute-tx node tx-ops)
@@ -2244,10 +2245,11 @@
                              :expected if-match :actual current})))
         write (lifecycle-write lc-ctx node :update resource-type id resource)
         resource (:resource write)
-        [sql args] (extract-and-build-sql resource-type id resource storage-encoders)
+        put-op [:put-docs (keyword resource-type)
+                (doc->put-doc (encode-resource-doc resource-type id resource storage-encoders))]
         own-ops (cond-> []
                   if-match (conj (version-assert-op resource-type id if-match))
-                  true (conj [:sql sql args]))
+                  true (conj put-op))
         tx-ops (into own-ops (lifecycle-tx-ops write))
         tx-key (try
                  (xt/execute-tx node tx-ops)
