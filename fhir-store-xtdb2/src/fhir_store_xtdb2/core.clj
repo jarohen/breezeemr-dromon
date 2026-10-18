@@ -1673,8 +1673,10 @@
    for a block to be written, then downgrade."
   ^xtdb.api.Xtdb$Config [node-config {:keys [pipelined-replica-appends?]}]
   (let [cfg (xtn/->config node-config)]
-    (.pipelinedReplicaAppends ^xtdb.api.IndexerConfig (.getIndexer cfg)
-                              (not (false? pipelined-replica-appends?)))
+    ;; wip: post-beta3 builds pipeline unconditionally and dropped the setter
+    (try (clojure.lang.Reflector/invokeInstanceMethod (.getIndexer cfg) "pipelinedReplicaAppends"
+                                                      (object-array [(not (false? pipelined-replica-appends?))]))
+         (catch IllegalArgumentException _))
     cfg))
 
 (defn start-node
